@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/vault/api/auth/approle v0.6.0
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/spf13/viper v1.18.2
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 )
 
 require (
