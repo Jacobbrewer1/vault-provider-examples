@@ -5,12 +5,15 @@ go 1.22
 toolchain go1.22.0
 
 require (
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/hashicorp/vault/api v1.13.0
 	github.com/hashicorp/vault/api/auth/approle v0.6.0
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/spf13/viper v1.18.2
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/cenkalti/backoff/v3 v3.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.1 // indirect
