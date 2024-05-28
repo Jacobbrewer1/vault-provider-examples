@@ -59,8 +59,8 @@ github.com/hashicorp/hcl/json/token
 # github.com/hashicorp/vault/api v1.14.0
 ## explicit; go 1.21
 github.com/hashicorp/vault/api
-# github.com/hashicorp/vault/api/auth/approle v0.6.0
-## explicit; go 1.16
+# github.com/hashicorp/vault/api/auth/approle v0.7.0
+## explicit; go 1.21
 github.com/hashicorp/vault/api/auth/approle
 # github.com/jmoiron/sqlx v1.4.0
 ## explicit; go 1.10
