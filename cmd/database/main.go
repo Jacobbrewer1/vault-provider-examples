@@ -62,7 +62,7 @@ func setup() error {
 
 		slog.Debug("Vault secrets retrieved")
 
-		dbConnectionString := repositories.GenerateConnectionStr(v, vs)
+		dbConnectionString := repositories.GenerateConnectionStr(v, dbSecrets)
 		v.Set("database.connection_string", dbConnectionString)
 
 		slog.Info("Database connection generate from vault secrets")
