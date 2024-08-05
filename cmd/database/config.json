@@ -1,0 +1,14 @@
+{
+  "vault": {
+    "address": "http://localhost:8200",
+    "auth": {
+      "username": "database-example",
+      "password": "some-password"
+    }
+  },
+  "database": {
+    "credentials_path": "org-prod-inst-db/creds/readwrite",
+    "host": "localhost:3306",
+    "schema": "vault-examples"
+  }
+}
