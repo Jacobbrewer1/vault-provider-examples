@@ -13,6 +13,7 @@ import (
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/logging"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/repositories"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/vault"
+	"github.com/google/uuid"
 	"github.com/spf13/viper"
 )
 
@@ -48,15 +49,20 @@ func main() {
 			slog.Info("Shutting down")
 			return
 		default:
-			// Ping the database to keep the connection alive
-			if err := db.PingContext(ctx); err != nil {
-				slog.Error("Error pinging database", slog.String(logging.KeyError, err.Error()))
-				os.Exit(1)
+			uid := uuid.New().String()[0:8]
+
+			// Insert into the table "example" the value of the uid
+			_, err := db.ExecContext(ctx, "INSERT INTO example (value) VALUES (?)", uid)
+			if err != nil {
+				slog.Error("Error inserting into table", slog.String("value", uid), slog.String(logging.KeyError, err.Error()))
+				time.Sleep(1 * time.Second)
+				continue
 			}
 
-			slog.Info("Pinged database")
+			slog.Info("Inserted into table", slog.String("value", uid))
 
-			time.Sleep(5 * time.Second)
+			// Sleep for 1 second
+			time.Sleep(1 * time.Second)
 		}
 	}
 }
