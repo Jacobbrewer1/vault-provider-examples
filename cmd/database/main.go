@@ -6,16 +6,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/logging"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/repositories"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/vault"
-	vault2 "github.com/hashicorp/vault/api"
 	"github.com/spf13/viper"
 )
 
 var (
 	configLocation string
+	db             *repositories.Database
 )
 
 func main() {
@@ -27,11 +29,36 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Just wait and logs will appear as vault renews and reconnects to the database.
-	<-make(chan any)
+	// Listen for ctrl+c and kill signals
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		got := <-sig
+		slog.Info("Received signal, shutting down", slog.String("signal", got.String()))
+		cancel()
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Shutting down")
+			return
+		default:
+			// Ping the database to keep the connection alive
+			if err := db.PingContext(ctx); err != nil {
+				slog.Error("Error pinging database", slog.String(logging.KeyError, err.Error()))
+				os.Exit(1)
+			}
+
+			slog.Info("Pinged database")
+		}
+	}
 }
 
-func setup() error {
+func setup() (err error) {
 	ctx := context.Background()
 
 	v := viper.New()
@@ -40,74 +67,50 @@ func setup() error {
 		return fmt.Errorf("error reading config file: %w", err)
 	}
 
-	// Check if the vault category is in the config file.
-	var vaultClient vault.Client
-	dbSecrets := new(vault.Secrets)
+	vaultDb := &repositories.VaultDB{
+		Client:         nil,
+		Vip:            v,
+		Enabled:        false,
+		CurrentSecrets: nil,
+	}
+
+	// If vault is enabled, create a new vault client and get the secrets
 	if v.IsSet("vault") {
 		slog.Info("Vault configuration found, attempting to connect")
+		vaultDb.Enabled = true
 
-		vc, err := vault.NewClient(v)
+		vc, err := vault.NewClientUserPass(v)
 		if err != nil {
 			return fmt.Errorf("error creating vault client: %w", err)
 		}
-		vaultClient = vc
+
+		vaultDb.Client = vc
 
 		slog.Debug("Vault client created")
 
-		vs, err := vc.GetSecrets(v.GetString("database.credentials_path"))
+		vs, err := vc.GetSecret(ctx, v.GetString("database.credentials_path"))
 		if err != nil {
 			return fmt.Errorf("error getting secrets from vault: %w", err)
 		}
-		dbSecrets = vs
 
 		slog.Debug("Vault secrets retrieved")
+		vaultDb.CurrentSecrets = vs
 
-		dbConnectionString := repositories.GenerateConnectionStr(v, dbSecrets)
+		dbConnectionString := repositories.GenerateConnectionStr(v, vs)
 		v.Set("database.connection_string", dbConnectionString)
+
+		db, err = repositories.ConnectDB(ctx, vaultDb)
+		if err != nil {
+			return fmt.Errorf("error connecting to database: %w", err)
+		}
 
 		slog.Info("Database connection generate from vault secrets")
 	} else {
 		slog.Warn("Vault configuration not found, using raw values")
-	}
-
-	sqlxDb, err := repositories.ConnectDB(v)
-	if err != nil {
-		return fmt.Errorf("error connecting to database: %w", err)
-	}
-
-	db := repositories.NewDatabase(sqlxDb)
-
-	if v.IsSet("vault") {
-		go func() {
-			err := vaultClient.RenewLease(ctx, v.GetString("database.credentials_path"), dbSecrets.Secret, func() (*vault2.Secret, error) {
-				slog.Warn("Vault lease expired, reconnecting to database")
-
-				vs, err := vaultClient.GetSecrets(v.GetString("database.credentials_path"))
-				if err != nil {
-					return nil, fmt.Errorf("error getting secrets from vault: %w", err)
-				}
-
-				dbConnectionString := repositories.GenerateConnectionStr(v, vs)
-				v.Set("database.connection_string", dbConnectionString)
-
-				newDb, err := repositories.ConnectDB(v)
-				if err != nil {
-					return nil, fmt.Errorf("error connecting to database: %w", err)
-				}
-
-				if err := db.Reconnect(ctx, newDb); err != nil {
-					return nil, fmt.Errorf("error reconnecting to database: %w", err)
-				}
-
-				slog.Info("Database reconnected")
-
-				return vs.Secret, nil
-			})
-			if err != nil {
-				slog.Error("Error renewing vault lease", slog.String(logging.KeyError, err.Error()))
-				os.Exit(1) // Forces new credentials to be fetched
-			}
-		}()
+		db, err = repositories.ConnectDB(ctx, vaultDb)
+		if err != nil {
+			return fmt.Errorf("error connecting to database: %w", err)
+		}
 	}
 
 	return nil

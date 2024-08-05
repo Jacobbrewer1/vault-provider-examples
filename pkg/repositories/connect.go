@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
+	"github.com/Jacobbrewer1/vault-provider-examples/pkg/logging"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/vault"
 	_ "github.com/go-sql-driver/mysql"
+	vault2 "github.com/hashicorp/vault/api"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/viper"
 )
@@ -18,8 +21,63 @@ const (
 	EnvRedisHost = "REDIS_HOST"
 )
 
+type VaultDB struct {
+	Client         vault.Client
+	Vip            *viper.Viper
+	Enabled        bool
+	CurrentSecrets *vault.Secrets
+}
+
 // ConnectDB connects to the database
-func ConnectDB(v *viper.Viper) (*sqlx.DB, error) {
+func ConnectDB(ctx context.Context, v *VaultDB) (*Database, error) {
+	sqlxDb, err := createConnection(v.Vip)
+	if err != nil {
+		return nil, fmt.Errorf("error connecting to database: %w", err)
+	}
+
+	db := NewDatabase(sqlxDb)
+
+	if v.Vip.IsSet("vault") {
+		go func() {
+			err := v.Client.RenewLease(ctx, v.Vip.GetString("database.credentials_path"), v.CurrentSecrets.Secret, func() (*vault2.Secret, error) {
+				slog.Warn("Vault lease expired, reconnecting to database")
+
+				vs, err := v.Client.GetSecret(ctx, v.Vip.GetString("database.credentials_path"))
+				if err != nil {
+					return nil, fmt.Errorf("error getting secrets from vault: %w", err)
+				}
+
+				dbConnectionString := GenerateConnectionStr(v.Vip, vs)
+				v.Vip.Set("database.connection_string", dbConnectionString)
+
+				newDb, err := createConnection(v.Vip)
+				if err != nil {
+					return nil, fmt.Errorf("error connecting to database: %w", err)
+				}
+
+				if err := db.Reconnect(ctx, newDb); err != nil {
+					return nil, fmt.Errorf("error reconnecting to database: %w", err)
+				}
+
+				slog.Info("Database reconnected")
+
+				return vs.Secret, nil
+			})
+			if err != nil {
+				slog.Error("Error renewing vault lease", slog.String(logging.KeyError, err.Error()))
+				os.Exit(1) // Forces new credentials to be fetched
+			}
+		}()
+
+		slog.Info("Database connection established with vault")
+		return db, nil
+	}
+
+	slog.Info("Database connection established")
+	return db, nil
+}
+
+func createConnection(v *viper.Viper) (*sqlx.DB, error) {
 	connectionString := v.GetString("database.connection_string")
 	if connectionString == "" {
 		return nil, errors.New("no database connection string provided")
