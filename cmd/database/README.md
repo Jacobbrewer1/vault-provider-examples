@@ -11,11 +11,13 @@ wish. For this example I have provided it with a `config.json` file.
 {
   "vault": {
     "address": "https://vaulthost.com",
-    "app_role_id": "some-app-role-id",
-    "app_role_secret_id": "some-app-role-secret-id"
+    "auth": {
+      "username": "my-app-name",
+      "password": "my-app-password"
+    }
   },
   "database": {
-    "credentials_path": "database/creds/my-mysql-role",
+    "credentials_path": "mount/creds/role",
     "host": "localhost:3306",
     "schema": "schema"
   }
