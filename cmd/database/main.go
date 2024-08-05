@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/logging"
 	"github.com/Jacobbrewer1/vault-provider-examples/pkg/repositories"
@@ -54,6 +55,8 @@ func main() {
 			}
 
 			slog.Info("Pinged database")
+
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
